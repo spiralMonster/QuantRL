@@ -1,0 +1,17 @@
+model_config={
+    "hidden_layers":[
+        {
+            "units":,
+            "activation":,
+            "kernel_initializer":,
+            "kernel_regularizer":
+        },
+       ....
+    ],
+  "final_layer":{
+             "units":,
+            "activation":,
+            "kernel_initializer":,
+            "kernel_regularizer":
+  }
+}
