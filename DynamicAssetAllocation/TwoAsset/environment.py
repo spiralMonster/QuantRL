@@ -43,6 +43,8 @@ class Environment:
         self.get_raw_data()
         self.prepare_data()
 
+        self.action_space=Action_Space()
+
 
     def get_raw_data(self):
         raw_data,_=self.ts.get_daily(symbol=self.symbol,outputsize="full")
@@ -50,16 +52,15 @@ class Environment:
         raw_data.rename(columns={"4. close":"Xt"},inplace=True)
         raw_data=raw_data.iloc[:self.steps]
         raw_data=raw_data.iloc[::-1]
+
+        initial_value=raw_data["Xt"].iloc[0]
+        risk_free_asset_data=initial_value*np.exp(self.short_rate*np.arange(self.steps)*self.dt)
+        raw_data["Yt"]=risk_free_asset_data
+        
         self.raw_data=raw_data
 
     def prepare_data(self):
         data=self.raw_data
-        
-        initial_value=self.raw_data["Xt"].iloc[0]
-        risk_free_asset_data=initial_value*np.exp(self.short_rate*np.arange(self.steps)*self.dt)
-        
-
-        data["Yt"]=risk_free_asset_data
         
         data["Xt_returns"]=np.log(data["Xt"]/data["Xt"].shift(1))
 
@@ -131,7 +132,7 @@ class Environment:
         self.final_data[["Yt"]].plot(figsize=(10,6),style=["g"])
         plt.xlabel("Time steps")
         plt.ylabel("Price")
-        plt.title("Risk Free Asset| Time VS Price")
+        plt.title(f"Risk Free Asset| Short Rate: {self.short_rate}| Time VS Price")
         plt.show()
 
         
