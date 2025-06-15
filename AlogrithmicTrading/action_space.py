@@ -9,8 +9,8 @@ class Action_Space:
         random.seed(seed)
 
     def sample(self):
-        if action_type=='discrete':
-            return random.randint(0,self.n)
+        if self.action_type=='discrete':
+            return random.randint(0,self.n-1)
 
         else:
             return random.uniform(0,self.n)    

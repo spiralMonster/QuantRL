@@ -1,1 +1,5 @@
 .env
+.ipynb_checkpoints/
+AlogrithmicTrading/Models/
+AlogrithmicTrading/.ipynb_checkpoints/
+
