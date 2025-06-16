@@ -22,7 +22,8 @@ class Simulated_Environment(Environment):
         steps,
         number_lags,
         sma_period,
-        window
+        window,
+        env_type="simulated"
     ):
         self.initial_value=initial_value
         self.short_rate=short_rate
@@ -37,6 +38,7 @@ class Simulated_Environment(Environment):
         self.index=0
         self.xt=0
         self.yt=0
+        self.env_type=env_type
 
         self.action_space=Action_Space()
 
@@ -65,7 +67,10 @@ class Simulated_Environment(Environment):
         self.index=0
         self.xt=0
         self.yt=0
-        self.trewards=list()
+        self.pl=list()
+        self.predicted_pl=list()
+        self.pl_percent=list()
+        self.pvalue=list()
 
         self.curr_index_drift=random.choice(self.index_drift)
         self.curr_volatility=random.choice(self.index_volatility)

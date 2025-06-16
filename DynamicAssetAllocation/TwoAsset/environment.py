@@ -24,7 +24,8 @@ class Environment:
         steps,
         number_lags,
         sma_period,
-        window
+        window,
+        env_type="normal"
         
     ):
         self.symbol=symbol
@@ -38,11 +39,15 @@ class Environment:
         self.index=0
         self.xt=0
         self.yt=0
+        self.xt_values=list()
+        self.env_type=env_type
+        
         self.ts=TimeSeries(key=os.environ["ALPHA_VANTAGE_KEY"],output_format="pandas",indexing_type="date")
 
         self.get_raw_data()
         self.prepare_data()
 
+        self.initial_value=self.final_data["Xt"].iloc[0]
         self.action_space=Action_Space()
 
 
@@ -95,12 +100,12 @@ class Environment:
         data_xt=list(data[self.xt_features])
         data_yt=list(data[self.yt_features])
 
-        state.append(list(zip(data_xt,data_yt)))
+        state.append(list(zip(data_xt,data_yt))[::-1])
 
         data_xt_returns=list(data[self.xt_return_features])
         data_xt_returns=[[v] for v in data_xt_returns]
 
-        state.append(data_xt_returns)
+        state.append(data_xt_returns[::-1])
 
         state.append(list(data[["Xt","Yt"]]))
         state[2].append(self.xt)
@@ -115,8 +120,11 @@ class Environment:
         self.index=0
         self.xt=0
         self.yt=0
-        self.trewards=list()
-
+        self.pl=list()
+        self.predicted_pl=list()
+        self.pl_percent=list()
+        self.pvalue=list()
+        
         state=self.get_state()
         return state,False
 
