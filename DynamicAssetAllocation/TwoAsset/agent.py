@@ -42,8 +42,8 @@ class Agent:
         self.epsilon_min=epsilon_min
         self.epsilon_decay=epsilon_decay
         self.memory=deque(maxlen=self.buffer_size)
-        self.portfolio_value=self.env.initial_value
-
+        
+        self.create_model()
         self.model_dir_path=model_dir_path
         
     def create_model(self):
@@ -129,9 +129,13 @@ class Agent:
     def optimal_action(self,state):
         bnds=[(0,1)]
         def f(state,x):
-            state[2][2]=x
-            state[2][3]=1-x
-            return self.model.predict([state[0],state[1],state[2],state[3]],verbose=False)[0][0]
+            state[2][2]=x[0]
+            state[2][3]=1-x[0]
+            return self.model.predict([np.expand_dims(np.array(state[0]),axis=0),
+                                       np.expand_dims(np.array(state[1]),axis=0),
+                                       np.expand_dims(np.array(state[2]),axis=0),
+                                       np.expand_dims(np.array(state[3]),axis=0)],
+                                       verbose=False)[0][0]
 
         action=minimize(lambda x: -f(state,x),0.5,bounds=bnds,method="Nelder-Mead")['x'][0]
         return action
@@ -165,16 +169,16 @@ class Agent:
             new_xt=self.env.final_data["Xt"].iloc[self.env.index]
             new_yt=self.env.final_data["Yt"].iloc[self.env.index]
 
-            new_portfolio_value=(self.xt*self.portfolio_value*(new_xt/curr_xt)+
-                                 self.yt*self.portfolio_value*(new_yt/curr_yt)
+            new_portfolio_value=(self.xt*self.env.portfolio_value*(new_xt/curr_xt)+
+                                 self.yt*self.env.portfolio_value*(new_yt/curr_yt)
                                 )
 
-            pl=new_portfolio_value-self.portfolio_value
+            pl=new_portfolio_value-self.env.portfolio_value
             pl_percent=pl/new_portfolio_value
             reward=pl
             
 
-            self.portfolio_value=new_portfolio_value
+            self.env.portfolio_value=new_portfolio_value
             self.xt=action
             self.yt=1-action
 
@@ -186,18 +190,20 @@ class Agent:
             done=False
 
         
-        self.env.pl.append(pl)
+        next_state=self.env.get_state()
+        pl_real=pl+self.gamma*self.qvalue(next_state)
+        
+        self.env.pl.append(pl_real)
         self.env.pl_percent.append(pl_percent)
-        self.env.pvalue(self.portfolio_value)
+        self.env.pvalue.append(self.env.portfolio_value)
         self.env.xt_values.append(self.xt)
         
-        next_state=self.env.get_state()
 
         if send_report:
             mse=MeanSquaredError()
             report={
                 "MSE":mse(self.env.pl,self.env.predicted_pl).numpy(),
-                "Pvalue":self.portfolio_value,
+                "Pvalue":self.env.portfolio_value,
                 "xt":self.xt
             }
             
@@ -206,28 +212,51 @@ class Agent:
             
 
         return next_state,reward,done,report
+        
+
+    def qvalue(self,next_state):
+        action=self.optimal_action(next_state)
+
+        next_state[2][2]=action
+        next_state[2][3]=1-action
+
+        value=self.model.predict([np.expand_dims(np.array(next_state[0]),axis=0),
+                                       np.expand_dims(np.array(next_state[1]),axis=0),
+                                       np.expand_dims(np.array(next_state[2]),axis=0),
+                                       np.expand_dims(np.array(next_state[3]),axis=0)],
+                                       verbose=False)[0][0]
+        return value
 
 
     def replay(self,steps_per_episode):
-        data_X=[]
+        data_X1=[]
+        data_X2=[]
+        data_X3=[]
+        data_X4=[]
         data_Y=[]
 
         data_batch=random.sample(self.memory,self.batch_size)
         for (state,action,next_state,reward,done) in data_batch:
             if not done:
                 target=reward
-                action=self.optimal_action(next_state)
-    
-                next_state[2][2]=action
-                next_stae[2][3]=1-action
-    
-                reward_next=self.model.predict([next_state[0],next_state[1],next_state[2],next_state[3]],verbose=False)[0][0]
+                reward_next=self.qvalue(next_state)
                 target+=self.gamma*reward_next
-                data_X.append(state)
+                
+                data_X1.append(state[0])
+                data_X2.append(state[1])
+                data_X3.append(state[2])
+                data_X4.append(state[3])
                 data_Y.append(target)
 
-        batch_size=len(data_X)
-        model.fit(data_X,data_Y,batch_size=batch_size,epochs=steps_per_episode,verbose=False)
+        batch_size=len(data_Y)
+        
+        data_X1=np.array(data_X1)
+        data_X2=np.array(data_X2)
+        data_X3=np.array(data_X3)
+        data_X4=np.array(data_X4)
+        data_Y=np.array(data_Y)
+        
+        self.model.fit([data_X1,data_X2,data_X3,data_X4,],data_Y,batch_size=batch_size,epochs=steps_per_episode,verbose=False)
 
         if self.epsilon>self.epsilon_min:
             self.epsilon*=self.epsilon_decay
@@ -250,7 +279,12 @@ class Agent:
             total_reward=0
 
             while not done:
-                pred_pl=self.model.predict([state[0],state[1],state[2],state[3]],verbose=False)[0][0]
+                pred_pl=self.model.predict([np.expand_dims(np.array(state[0]),axis=0),
+                                       np.expand_dims(np.array(state[1]),axis=0),
+                                       np.expand_dims(np.array(state[2]),axis=0),
+                                       np.expand_dims(np.array(state[3]),axis=0)],
+                                       verbose=False)[0][0]
+                
                 self.env.predicted_pl.append(pred_pl)
                 
                 action=self.act(state)
@@ -289,7 +323,7 @@ class Agent:
 
             if ep==episodes:
                 print("Training Agent completed...")
-                if self.env_type=="simulated":
+                if self.env.env_type=="simulated":
                     model_name=f"simulated_model_version_{training_version}.keras"
                     model_path=os.path.join(self.model_dir_path,model_name)
                     self.model.save(model_path)
@@ -297,7 +331,9 @@ class Agent:
                 else:
                     model_name=f"model_version_{training_version}.keras"
                     model_path=os.path.join(self.model_dir_path,model_name)
+                    
                     self.model.save(model_path)
+                    print(f"Model saved at : {model_path}")
 
                     
     def sample_indices(self,num_to_sample):
@@ -305,84 +341,83 @@ class Agent:
         
     
     def training_plots(self,num_plots=5):
-        time_steps=[range(1,self.env.steps+1)]
+        time_steps=list(range(1,self.env.steps))
 
         sampled_indices=self.sample_indices(num_plots)
         for ind in sampled_indices:
             pvalue_data=self.pvalue_per_episode[ind]
-
-            data=self.final_data[["Xt","Yt"]]
+        
+            data=self.env.final_data[["Xt","Yt"]].iloc[:-1]
             data["Pvalue"]=pvalue_data
-
+        
             data.plot(figsize=(10,6),style=["b","g","r"])
             plt.title(f"Training Episode: {ind+1}| Risky Asset(Xt)| Risk Free Asset(Yt)| Portfolio(Pvalue)")
             plt.xlabel("Time steps")
             plt.ylabel("Price")
             plt.legend()
             plt.show()
-
+        
         sampled_indices=self.sample_indices(num_plots)
         for ind in sampled_indices:
             pl_data=self.pl_per_episode[ind]
             data=pd.DataFrame(pl_data,columns=["Profit-Loss"],index=time_steps)
             
             data.plot(figsize=(10,6),style=["b"])
-            data.xlabel("Time steps")
-            data.ylabel("Profit-Loss")
+            plt.xlabel("Time steps")
+            plt.ylabel("Profit-Loss")
             plt.title(f"Training Episode: {ind}| Profit-Loss")
             plt.show()
-
-
+        
+        
         sampled_indices=self.sample_indices(num_plots)
         for ind in sampled_indices:
             pl_percent_data=self.pl_percent_per_episode[ind]
             data=pd.DataFrame(pl_percent_data,columns=["Profit-Loss%"],index=time_steps)
             
             data.plot(figsize=(10,6),style=["g"])
-            data.xlabel("Time steps")
-            data.ylabel("Profit-Loss%")
+            plt.xlabel("Time steps")
+            plt.ylabel("Profit-Loss%")
             plt.title(f"Training Episode: {ind}| Profit-Loss%")
             plt.show()
             
-
+        
         sampled_indices=self.sample_indices(num_plots)
         for ind in sampled_indices:
             xt_values_data=self.xt_values_per_episode[ind]
             data=pd.DataFrame(xt_values_data,columns=["xt"],index=time_steps)
-
+        
             data.plot(figsize=(10,6),style=["r"])
             plt.xlabel("Time Steps")
             plt.ylabel("Weight")
             plt.title(f"Training Episode: {ind}| Risky Asset Weight in Portfolio")
             plt.show()
 
-
     def episode_plots(self):
-        episodes=[range(1,self.training_episodes+1)]
-
-        plt.plot(episodes,self.twrewards,lw=1.0,c="b")
+        episodes=list(range(1,self.training_episodes+1))
+        
+        plt.plot(episodes,self.trewards,lw=1.0,c="b")
         plt.xlabel("Training Episodes")
         plt.ylabel("Reward")
         plt.xlim(0,self.training_episodes+2)
-        plt.ylim(min(self.twrewards)-1,max(self.twrewards)+1)
+        plt.ylim(min(self.trewards)-1,max(self.trewards)+1)
         plt.title("Episodes VS Rewards")
         plt.show()
-
+        
         plt.plot(episodes,self.mse_error,lw=1.0,c="r")
         plt.xlabel("Training Episodes")
         plt.ylabel("Mean Squared Error")
         plt.xlim(0,self.training_episodes+2)
-        plt.ylim(0,max(self.twrewards))
+        plt.ylim(0,max(self.mse_error))
         plt.title("Episodes VS MSE")
         plt.show()
-
+        
         plt.plot(episodes,self.end_pvalue,lw=1.0,c="g")
         plt.xlabel("Training Episodes")
         plt.ylabel("Portfolio Value")
         plt.title("Episodes VS Portofolio Value At Episode End")
         plt.show()
-
-        plt.plot(epsiodes,self.end_xt,lw=1.0,c="c")
+        
+        plt.plot(episodes,self.end_xt,lw=1.0,c="c")
         plt.xlabel("Training Episodes")
         plt.ylabel("Weight")
         plt.xlim(0,self.training_episodes+2)
@@ -394,7 +429,12 @@ class Agent:
         state,done=self.env.reset()
         total_reward=0
         while not done:
-            predicted_pl=self.model.predict([state[0],state[1],state[2],state[3]],verbose=False)
+            predicted_pl=self.model.predict([np.expand_dims(np.array(state[0]),axis=0),
+                                       np.expand_dims(np.array(state[1]),axis=0),
+                                       np.expand_dims(np.array(state[2]),axis=0),
+                                       np.expand_dims(np.array(state[3]),axis=0)],
+                                       verbose=False)[0][0]
+                
             self.env.predicted_pl.append(predicted_pl)
             
             action=self.optimal_action(state)
@@ -403,9 +443,8 @@ class Agent:
             state=next_state
 
         if verbose:
-            mse=MeanSquaredError()
-            error=mse(self.env.pl,self.env.predicted_pl).numpy()
-            info=f"Testing| Reward: {total_reward}| MSE: {error}"
+            mse=report["MSE"]
+            info=f"Testing| Reward: {total_reward}| MSE: {mse}"
             print(info)
 
         if plots:
@@ -413,19 +452,19 @@ class Agent:
             
 
     def test_plots(self):
-        time_steps=[range(1,self.env.steps+1)]
+        time_steps=list(range(1,self.env.steps))
 
-        data=self.env.final_data[["Xt","Yt"]]
+        data=self.env.final_data[["Xt","Yt"]].iloc[:-1]
         data["Portfolio_Value"]=self.env.pvalue
         data.index=time_steps
-
+        
         data.plot(figsize=(10,6),style=["b","g","r"])
         plt.xlabel("Time steps")
         plt.ylabel("Price")
         plt.legend()
         plt.title("Testing| Time VS (Risk Asset VS Risk Free Asset VS Portfolio) Price")
         plt.show()
-
+        
         plt.plot(time_steps,self.env.pl,lw=1.0,c="b")
         plt.xlabel("Time Steps")
         plt.ylabel("Profit-Loss")
@@ -433,7 +472,7 @@ class Agent:
         plt.ylim(min(self.env.pl),max(self.env.pl))
         plt.title("Testing| Time Steps VS Profit-Loss")
         plt.show()
-
+        
         plt.plot(time_steps,self.env.pl_percent,lw=1.0,c="g")
         plt.xlabel("Time Steps")
         plt.ylabel("Profit-Loss%")
@@ -441,7 +480,7 @@ class Agent:
         plt.ylim(min(self.env.pl_percent),max(self.env.pl_percent))
         plt.title("Testing| Time Steps VS Profit-Loss%")
         plt.show
-
+        
         plt.plot(time_steps,self.env.xt_values,lw=1.0,c='c')
         plt.xlabel("Time Steps")
         plt.ylabel("Weight")

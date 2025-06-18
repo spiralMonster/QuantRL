@@ -48,6 +48,7 @@ class Simulated_Environment(Environment):
 
         self.get_raw_data()
         self.prepare_data()
+        self.steps=len(self.final_data)
 
         
     def get_raw_data(self):
@@ -67,10 +68,12 @@ class Simulated_Environment(Environment):
         self.index=0
         self.xt=0
         self.yt=0
+        self.portfolio_value=self.initial_value
         self.pl=list()
         self.predicted_pl=list()
         self.pl_percent=list()
         self.pvalue=list()
+        self.xt_values=list()
 
         self.curr_index_drift=random.choice(self.index_drift)
         self.curr_volatility=random.choice(self.index_volatility)
@@ -83,19 +86,12 @@ class Simulated_Environment(Environment):
         return state,False
 
     def plots(self):
-        self.final_data[["Xt"]].plot(figsize=(10,6),style=["b"])
+        self.final_data[["Xt","Yt"]].plot(figsize=(10,6),style=["b","g"])
         plt.xlabel("Time steps")
         plt.ylabel("Price")
-        plt.title(f"Risky Asset| Index Drift: {self.curr_index_drift}| Index Volatility: {self.curr_volatility}")
+        plt.title(f"Risk Asset(Xt)| Risk Free Asset(Yt): short_rate({self.short_rate})| Time VS Price")
+        plt.legend()
         plt.show()
-
-        
-        self.final_data[["Yt"]].plot(figsize=(10,6),style=["g"])
-        plt.xlabel("Time steps")
-        plt.ylabel("Price")
-        plt.title(f"Risk Free Asset| Short Rate: {self.curr_short_rate}| Time VS Price")
-        plt.show()
-
         
         self.final_data[["Xt","Xt_min","Xt_max"]].plot(figsize=(10,6),style=["b","c","r"])
         plt.xlabel("Time steps")

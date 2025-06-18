@@ -92,6 +92,7 @@ class Environment:
         data.dropna(inplace=True)
 
         self.final_data=data
+        self.steps=len(self.final_data)
 
     def get_state(self):
         state=[]
@@ -120,29 +121,24 @@ class Environment:
         self.index=0
         self.xt=0
         self.yt=0
+        self.portfolio_value=self.initial_value
         self.pl=list()
         self.predicted_pl=list()
         self.pl_percent=list()
         self.pvalue=list()
+        self.xt_values=list()
         
         state=self.get_state()
         return state,False
 
     def plots(self):
 
-        self.final_data[["Xt"]].plot(figsize=(10,6),style=["b"])
+        self.final_data[["Xt","Yt"]].plot(figsize=(10,6),style=["b","g"])
         plt.xlabel("Time steps")
         plt.ylabel("Price")
-        plt.title(f"Risky Asset ({self.symbol})| Time VS Price")
+        plt.title(f"Risk Asset(Xt): {self.symbol}| Risk Free Asset(Yt): short_rate({self.short_rate})| Time VS Price")
+        plt.legend()
         plt.show()
-
-        
-        self.final_data[["Yt"]].plot(figsize=(10,6),style=["g"])
-        plt.xlabel("Time steps")
-        plt.ylabel("Price")
-        plt.title(f"Risk Free Asset| Short Rate: {self.short_rate}| Time VS Price")
-        plt.show()
-
         
         self.final_data[["Xt","Xt_min","Xt_max"]].plot(figsize=(10,6),style=["b","c","r"])
         plt.xlabel("Time steps")
