@@ -191,9 +191,8 @@ class Agent:
 
         
         next_state=self.env.get_state()
-        pl_real=pl+self.gamma*self.qvalue(next_state)
         
-        self.env.pl.append(pl_real)
+        self.env.pl.append(pl)
         self.env.pl_percent.append(pl_percent)
         self.env.pvalue.append(self.env.portfolio_value)
         self.env.xt_values.append(self.xt)
@@ -485,8 +484,8 @@ class Agent:
         plt.xlabel("Time Steps")
         plt.ylabel("Weight")
         plt.xlim(0,self.env.steps+2)
-        self.ylim(0,1)
-        self.title("Testing| Time Steps VS Risk Asset Weight in Portfolio")
+        plt.ylim(0,1)
+        plt.title("Testing| Time Steps VS Risk Asset Weight in Portfolio")
         plt.show()
 
         
