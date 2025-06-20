@@ -5,7 +5,7 @@ import pandas as pd
 from collections import deque
 from scipy.optimize import minimize
 from pylab import plt,mpl
-from sklern.metrics import mean_squared_error,mean_absolute_error
+from sklearn.metrics import mean_squared_error,mean_absolute_error
 import tensorflow as tf
 from tensorflow.keras.layers import LSTM,Dense,Input,Concatenate
 from tensorflow.keras.models import Model
@@ -106,12 +106,11 @@ class Agent:
             )(x4)
 
         for config in model5_config:
-            x5=LSTM(
+            x5=Dense(
                 units=config["units"],
                 activation=config["activation"],
                 kernel_initializer=config["kernel_initializer"],
-                kernel_regularizer=config["kernel_regularizer"],
-                return_sequences=config["return_sequences"]
+                kernel_regularizer=config["kernel_regularizer"]
             )(x5)
 
         x=Concatenate(axis=-1)([x1,x2,x3,x4,x5])
@@ -203,7 +202,7 @@ class Agent:
             curr_Yt=self.env.final_data["Yt"].iloc[self.env.index]
 
             self.env.stock=action
-            self.env.bond=(curr_Ct-self.stock*curr_Xt)/curr_Yt
+            self.env.bond=(curr_Ct-self.env.stock*curr_Xt)/curr_Yt
 
             reward=0
 
@@ -216,7 +215,7 @@ class Agent:
             self.env.stock=action
             self.env.bond=(next_Ct-self.env.stock*next_Xt)/next_Yt
 
-            self.phi_value_per_step.append(phi_value)
+            self.env.phi_value_per_step.append(phi_value)
             self.env.reward_per_step.append(reward)
             self.env.pl_per_step.append(pl)
             self.env.pl_percent_per_step.append(pl_per)
@@ -230,7 +229,11 @@ class Agent:
         self.env.bond_weight_per_step.append(self.env.bond)
         
         if self.env.index!=1:
-            real_qvalue=self.compute_qvalue(next_state,self.env.final_data["delta"].iloc[self.env.index],reward)
+            delta=self.env.final_data["delta"].iloc[self.env.index]
+            bond_weight=(next_state[4][2]-delta*next_state[4][0])/next_state[4][1]
+            opt_action=(delta,bond_weight)
+            
+            real_qvalue=self.compute_qvalue(next_state,opt_action,reward)
             self.env.real_qvalue_per_step.append(real_qvalue)
 
             model_inp=self.prepare_model_input(state)
@@ -249,7 +252,7 @@ class Agent:
 
         if send_report:
             report={
-                "Total Reward":sum(self.env_reward_per_step)
+                "Total Reward":sum(self.env_reward_per_step),
                 "Average Reward":sum(self.env.reward_per_step)/self.env.steps,
                 "Average Profit-Loss":sum(self.env.pl_per_step)/self.env.steps,
                 "Average Profit-Loss%":sum(self.env.pl_percent_per_step)/self.env.steps,
@@ -290,7 +293,10 @@ class Agent:
         for(state,action,next_state,reward,done) in batch_data:
             
             if done:
-                next_state_opt_action=self.optimal_action(next_state)
+                delta=self.optimal_action(next_state)
+                bond_weight=(next_state[4][2]-delta*next_state[4][0])/next_state[4][1]
+                next_state_opt_action=(delta,bond_weight)
+                
                 target=self.compute_qvalue(next_state,next_state_opt_action,reward)
     
                 data_Y.append(target)
@@ -379,7 +385,7 @@ class Agent:
 
                 model_path=os.path.join(self.model_dir,model_name)
                 self.model.save(model_path)
-                print(f"Model Saved at: {model_path")
+                print(f"Model Saved at: {model_path}")
                 
                 
     def sample_episodes(self,num_plots):
@@ -503,7 +509,7 @@ class Agent:
     def test_plots():
         time_step=list(range(1,self.env.steps))
                 
-        reward_data=self.reward_per_step
+        reward_data=self.env.reward_per_step
         plt.plot(time_step,reward_data,lw=1.0,c="b")
         plt.xlabel("Time Steps")
         plt.ylabel("Reward")
@@ -511,7 +517,7 @@ class Agent:
         plt.show()
             
         
-        phi_data=self.phi_value_per_step
+        phi_data=self.env.phi_value_per_step
         data=self.env.final_data["Ct"].iloc[1:]
         data["Phi"]=phi_data
         data.index=time_step
@@ -523,7 +529,7 @@ class Agent:
         plt.show()
             
         
-        delta_data=self.model_delta_per_step
+        delta_data=self.env.model_delta_per_step
         data=self.env.final_data["delta"].iloc[1:]
         data["pred_delta"]=delta_data
         data.index=time_step
@@ -535,7 +541,7 @@ class Agent:
         plt.show()
 
         
-        bond_data=self.bond_weight_per_step
+        bond_data=self.env.bond_weight_per_step
         data=pd.DataFrame(bond_data,columns=["Bond weight in Repl.Portfolio"],index=time_step)
         data.plot(figsize=(10,6),style=["g"])
         plt.xlabel("Time Steps")
