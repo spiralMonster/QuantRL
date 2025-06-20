@@ -66,6 +66,19 @@ class Environment:
         return option_value
         
 
+    def get_delta(self,st,t):
+        K=self.strike_price
+        sig=self.volatility
+        r=self.short_rate
+        T=self.maturity
+        t*=self.dt
+
+        d1=(np.log(st/K)+(r+0.5*(sig**2))*(T-t))/(sig*((T-t)**0.5))
+        delta=stats.norm.cdf(d1,0,1)
+
+        return delta
+        
+
 
     def get_raw_data(self):
         raw_data,_=self.ts.get_daily(symbol=self.symbol,outputsize="full")
@@ -90,7 +103,7 @@ class Environment:
         raw_data["Ct"]=self.get_option_value(raw_data["Xt"],raw_data["steps"])
         raw_data["Ct_returns"]=np.log(raw_data["Ct"]/raw_data["Ct"].shift(1))
 
-        raw_data["delta"]=(raw_data["Ct"]-raw_data["Ct"].shift(1))/(raw_data["Xt"]-raw_data["Xt"].shift(1))
+        raw_data["delta"]=self.get_delta(raw_data["Xt"],raw_data["steps"])
         
         raw_data.drop(columns=["steps"],axis=1,inplace=True)
         raw_data.dropna(inplace=True)
@@ -202,7 +215,14 @@ class Environment:
         self.stock=0
         self.bond=0
 
-        self.trewards=list()
+        self.phi_value_per_step=[]
+        self.reward_per_step=[]
+        self.pl_per_step=[]
+        self.pl_percent_per_step=[]
+        self.model_delta_per_step=[]
+        self.bond_weight_per_step=[]
+        self.predicted_qvalue_per_step=[]
+        self.real_qvalue_per_step=[]
 
         state=self.get_state()
 
