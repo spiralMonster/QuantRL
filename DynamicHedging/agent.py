@@ -30,7 +30,8 @@ class Agent:
         gamma,
         epsilon,
         epsilon_min,
-        epsilon_decay  
+        epsilon_decay,
+        model_trained=False
         
     ):
         self.env=env
@@ -43,10 +44,12 @@ class Agent:
         self.epsilon_min=epsilon_min
         self.epsilon_decay=epsilon_decay
         self.memory=deque(maxlen=self.buffer_size)
-
+        
+        self.model_trained=model_trained
         self.model_dir=r"/home/spiralmonster/Projects/ReinforcementLearningForFinance/DynamicHedging/Models" 
 
-        self.create_model()
+        if not self.model_trained:
+            self.create_model()
 
     def create_model(self):
         inp1=Input(shape=(self.env.number_lags+1,3),dtype=tf.float64)
@@ -510,7 +513,7 @@ class Agent:
         if plots:
             self.test_plots()
             
-    def test_plots():
+    def test_plots(self):
         time_step=list(range(1,self.env.steps))
                 
         reward_data=self.env.reward_per_step
@@ -522,7 +525,7 @@ class Agent:
             
         
         phi_data=self.env.phi_value_per_step
-        data=self.env.final_data["Ct"].iloc[1:]
+        data=pd.DataFrame(self.env.final_data["Ct"].iloc[1:])
         data["Phi"]=phi_data
         data.index=time_step
         data.plot(figsize=(10,6),style=["b","r"])
@@ -534,7 +537,7 @@ class Agent:
             
         
         delta_data=self.env.model_delta_per_step
-        data=self.env.final_data["delta"].iloc[1:]
+        data=pd.DataFrame(self.env.final_data["delta"].iloc[1:])
         data["pred_delta"]=delta_data
         data.index=time_step
         data.plot(figsize=(10,6),style=["g","c"])
