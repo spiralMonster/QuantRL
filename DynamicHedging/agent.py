@@ -169,11 +169,11 @@ class Agent:
         bnds=[(0,1)]
         
         def f(state,x):
-            state[5][6]=x[0]
-            state[5][7]=(state[5][2]-x[0]*state[5][0])/state[5][1]
+            state[4][6]=x[0]
+            state[4][7]=(state[4][2]-x[0]*state[4][0])/state[4][1]
 
             inp=self.prepare_model_input(state)
-            return self.model.predict(input,verbose=False)[0][0]
+            return self.model.predict(inp,verbose=False)[0][0]
 
         action=minimize(lambda x: -f(state,x),0.5,bounds=bnds,method="Powell")['x'][0]
         return action
@@ -203,7 +203,8 @@ class Agent:
 
             self.env.stock=action
             self.env.bond=(curr_Ct-self.env.stock*curr_Xt)/curr_Yt
-
+            phi_value=self.env.stock*next_Xt+self.env.bond*next_Yt
+            
             reward=0
 
         else:
@@ -215,12 +216,13 @@ class Agent:
             self.env.stock=action
             self.env.bond=(next_Ct-self.env.stock*next_Xt)/next_Yt
 
-            self.env.phi_value_per_step.append(phi_value)
-            self.env.reward_per_step.append(reward)
             self.env.pl_per_step.append(pl)
             self.env.pl_percent_per_step.append(pl_per)
             
 
+        self.env.phi_value_per_step.append(phi_value)
+        self.env.reward_per_step.append(reward)
+        
         state=self.env.get_state()
         self.env.index+=1
         next_state=self.env.get_state()
@@ -252,10 +254,10 @@ class Agent:
 
         if send_report:
             report={
-                "Total Reward":sum(self.env_reward_per_step),
-                "Average Reward":sum(self.env.reward_per_step)/self.env.steps,
-                "Average Profit-Loss":sum(self.env.pl_per_step)/self.env.steps,
-                "Average Profit-Loss%":sum(self.env.pl_percent_per_step)/self.env.steps,
+                "Total Reward":sum(self.env.reward_per_step),
+                "Average Reward":sum(self.env.reward_per_step)/self.env.steps-1,
+                "Average Profit-Loss":sum(self.env.pl_per_step)/self.env.steps-2,
+                "Average Profit-Loss%":sum(self.env.pl_percent_per_step)/self.env.steps-2,
                 
                 "MAE between Option Value and Replication Portfolio":mean_absolute_error(
                     self.env.phi_value_per_step,
@@ -263,8 +265,8 @@ class Agent:
                 ),
                 
                 "MSE between theoretical and predicted delta":mean_squared_error(
-                    list(self.env.final_data["delta"].iloc[1:]),
-                    self.env.model_predicted_delta
+                    list(self.env.final_data["delta"].iloc[:-1]),
+                    self.env.model_delta_per_step
                 ),
 
                 "MSE between real and predicted Qvalue":mean_squared_error(
@@ -290,9 +292,9 @@ class Agent:
 
         batch_data=random.sample(self.memory,self.batch_size)
         
-        for(state,action,next_state,reward,done) in batch_data:
+        for (state,action,next_state,reward,done) in batch_data:
             
-            if done:
+            if not done:
                 delta=self.optimal_action(next_state)
                 bond_weight=(next_state[4][2]-delta*next_state[4][0])/next_state[4][1]
                 next_state_opt_action=(delta,bond_weight)
@@ -300,12 +302,13 @@ class Agent:
                 target=self.compute_qvalue(next_state,next_state_opt_action,reward)
     
                 data_Y.append(target)
-    
+                
                 data_X1.append(state[0])
                 data_X2.append(state[1])
                 data_X3.append(state[2])
-                data_X4.appenda(state[3])
+                data_X4.append(state[3])
                 data_X5.append(state[4])
+                
                 
         batch_size=len(data_Y)
         
@@ -316,7 +319,8 @@ class Agent:
         data_X5=np.array(data_X5)
         data_Y=np.array(data_Y)
 
-        model.fit([data_X1,data_X2,data_X3,data_X4,data_X5],data_Y,batch_size=batch_size,epochs=steps_per_episode,verbose=False)
+
+        self.model.fit([data_X1,data_X2,data_X3,data_X4,data_X5],data_Y,batch_size=batch_size,epochs=steps_per_episode,verbose=False)
 
         if self.epsilon>self.epsilon_min:
             self.epsilon*=self.epsilon_decay
@@ -366,7 +370,7 @@ class Agent:
             self.bond_weight_per_step_per_episode.append(self.env.bond_weight_per_step)
 
             if verbose:
-                if(env%10)==0:
+                if(ep%10)==0:
                     info=f"Episode: {ep}/{self.training_episodes}| Epsilon: {self.epsilon} "
                     for key,value in report.items():
                         info+=f"{key}: {value}| "
@@ -396,7 +400,7 @@ class Agent:
         time_step=list(range(1,self.env.steps))
         
         sampled_ep=self.sample_episodes(num_plots)
-        for ep in sample_ep:
+        for ep in sampled_ep:
             reward_data=self.reward_per_step_per_episode[ep]
 
             plt.plot(time_step,reward_data,lw=1.0,c="b")
@@ -410,7 +414,7 @@ class Agent:
         for ep in sampled_ep:
             phi_data=self.phi_value_per_step_per_episode[ep]
             
-            data=self.env.final_data["Ct"].iloc[1:]
+            data=pd.DataFrame(self.env.final_data["Ct"].iloc[1:])
             data["Phi"]=phi_data
             data.index=time_step
 
@@ -426,7 +430,7 @@ class Agent:
         for ep in sampled_ep:
             delta_data=self.predicted_delta_per_step_per_episode[ep]
             
-            data=self.env.final_data["delta"].iloc[1:]
+            data=pd.DataFrame(self.env.final_data["delta"].iloc[1:])
             data["pred_delta"]=delta_data
             data.index=time_step
 
