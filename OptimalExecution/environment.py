@@ -56,14 +56,14 @@ class Environment:
     def cal_permanent_impact(self):
         gamma=self.permanent_impact_factor
 
-        risk=np.sum(self.xt*gamma*np.cumsum(xt))
+        risk=np.sum(np.array(self.xt)*gamma*np.cumsum(np.array(self.xt)))
         return risk
         
 
     def cal_temporary_impact(self):
         eta=self.temporary_impact_factor
 
-        risk=np.sum(eta*np.square(self.xt/self.dt)*self.dt)
+        risk=np.sum(eta*np.square(np.array(self.xt)/self.dt)*self.dt)
         return risk
         
 
@@ -71,7 +71,7 @@ class Environment:
         lambd=self.risk_aversion_factor
         sigma=self.stock_volatility
 
-        risk=np.sum(((self.xt[::-1].cumsum()[::-1]/self.dt)**2)*self.dt*lambd*(sigma**2))
+        risk=np.sum(((np.array(self.xt)[::-1].cumsum()[::-1]/self.dt)**2)*self.dt*lambd*(sigma**2))
 
         return risk
 
@@ -121,10 +121,10 @@ class Environment:
         self.training_episode+=1
         self.random_xt_generator()
         self.remaining_share=self.number_shares
-        self.permanent_impact=0
-        self.temporary_impact=0
-        self.execution_risk=0
-        self.total_execution_cost=0
+        self.permanent_impact=0.0
+        self.temporary_impact=0.0
+        self.execution_risk=0.0
+        self.total_execution_cost=0.0
 
         self.xt=(self.trading_steps+1)*[0.0]
 

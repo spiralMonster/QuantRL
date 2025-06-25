@@ -72,7 +72,7 @@ class Agent:
 
         model1_config=model_config["Model_1"]
         model2_config=model_config["Model_2"]
-        final_model_config=config["Final_Model"]
+        final_model_config=model_config["Final_Model"]
 
         for config in model1_config:
             x1=LSTM(
@@ -92,7 +92,7 @@ class Agent:
                 kernel_regularizer=config["kernel_regularizer"]
             )(x2)
 
-        x=Concatenate(axis=-1)[(x1,x2)]
+        x=Concatenate(axis=-1)([x1,x2])
 
         for config in final_model_config:
             x=Dense(
@@ -137,7 +137,7 @@ class Agent:
         
 
     def act(self,state):
-        if random.random()<self.epsilon() or self.env.training_episode<self.exploration_episodes:
+        if random.random()<self.epsilon or self.env.training_episode<self.exploration_episodes:
             action=min(self.env.random_xt[self.env.index+1],self.env.remaining_share)
 
         else:
@@ -148,17 +148,7 @@ class Agent:
 
         
     def step(self,action):
-        state=self.get_state()
-        
-        model_inp=self.prepare_model_input(state)
-        xt_learned=self.actor_model.predict(model_inp,verbose=False)[0][0]
-        self.env.xt_learned_strategy_per_step.append(xt_learned)
-
-        pred_state_value=self.critic_model.predict(model_inp,verbose=False)[0][0]
-        self.env.predicted_state_value.append(pred_state_value)
-        next_state_model_inp=self.prepare_model_input(state)
-        real_state_value=reward+self.gamma*self.critic_model.predict(next_state_model_inp,verbose=False)[0][0]
-        self.env.real_state_value.append(real_state_value)
+        state=self.env.get_state()
     
         self.env.index+=1
         send_report=False
@@ -175,13 +165,14 @@ class Agent:
 
         self.env.permanent_impact=self.env.cal_permanent_impact()-self.env.permanent_impact
         self.env.temporary_impact=self.env.cal_temporary_impact()-self.env.temporary_impact
-        self.env.execution_risk=self.env.cal_execution_risk()-self.env.execution_risk()
+        self.env.execution_risk=self.env.cal_execution_risk()-self.env.execution_risk
         self.env.total_execution_cost=self.env.permanent_impact+self.env.temporary_impact+self.env.execution_risk
 
         next_state=self.env.get_state()
-
+        pen=0.0
+        
         if self.env.index<self.env.trading_steps:
-            if self.remaining_share<0.0001:
+            if self.env.remaining_share<0.0001:
                 done=True
                 send_report=True
             else:
@@ -190,9 +181,20 @@ class Agent:
         elif self.env.index==self.env.trading_steps:
             done=True
             send_report=True
-            pen=self.remaining_share*10
+            pen=self.env.remaining_share*10
 
         reward=-(pen+action_penalty+self.env.total_execution_cost)
+
+        model_inp=self.prepare_model_input(state)
+        xt_learned=self.actor_model.predict(model_inp,verbose=False)[0][0]
+        self.env.xt_learned_strategy_per_step.append(xt_learned)
+
+        pred_state_value=self.critic_model.predict(model_inp,verbose=False)[0][0]
+        self.env.predicted_state_value.append(pred_state_value)
+        next_state_model_inp=self.prepare_model_input(state)
+        real_state_value=reward+self.gamma*self.critic_model.predict(next_state_model_inp,verbose=False)[0][0]
+        self.env.real_state_value.append(real_state_value)
+        
 
         self.env.reward_per_step.append(reward)
         self.env.permanent_impact_per_step.append(self.env.permanent_impact)
@@ -209,7 +211,7 @@ class Agent:
                 "Average Permanent Impact":sum(self.env.permanent_impact_per_step)/self.env.trading_steps,
                 "Average Temporary Impact":sum(self.env.temporary_impact_per_step)/self.env.trading_steps,
                 "Average Execution Risk":sum(self.env.execution_risk_per_step)/self.env.trading_steps,
-                "Average Total Execution Cost":sum(self.env.total_execution_cost)/self.env.trading_steps,
+                "Average Total Execution Cost":sum(self.env.total_execution_cost_per_step)/self.env.trading_steps,
                 "Mean Absolute Error between Optimal Execution Strategy and Learned Strategy":mean_absolute_error(
                     xt_optimal,
                     self.env.xt_learned_strategy_per_step
