@@ -205,6 +205,10 @@ class Agent:
         if send_report:
             xt_optimal=self.env.xt_optimal[1:]
             
+            if len(xt_optimal)!=len(self.env.xt_learned_strategy_per_step):
+                zero_xt=(len(xt_optimal)-len(self.env.xt_learned_strategy_per_step))*[0.0]
+                self.env.xt_learned_strategy_per_step.extend(zero_xt)
+            
             report={
                 "Total Reward":sum(self.env.reward_per_step),
                 "Average Reward":sum(self.env.reward_per_step)/self.env.trading_steps,
@@ -239,7 +243,7 @@ class Agent:
         for (state,action,next_state,reward,done) in batch_data:
             if not done:
                 next_state_model_inp=self.prepare_model_input(next_state)
-                next_value=self.critic_model.predict(next_state_model,verbose=False)[0][0]
+                next_value=self.critic_model.predict(next_state_model_inp,verbose=False)[0][0]
                 critic_target=reward+self.gamma*next_value
                 Y_critic.append(critic_target)
 

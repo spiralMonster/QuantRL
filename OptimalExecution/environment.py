@@ -45,7 +45,7 @@ class Environment:
 
 
     def random_xt_generator(self):
-        rng=np.random.default_rng(seed=69)
+        rng=np.random.default_rng()
         alpha=np.ones(self.trading_steps)
 
         random_xt=rng.dirichlet(alpha)
