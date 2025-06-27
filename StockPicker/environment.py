@@ -11,6 +11,13 @@ from action_space import Action_Space
 
 load_dotenv()
 
+plt.style.use("seaborn-v0_8")
+mpl.rcParams["figure.dpi"]=300
+mpl.rcParams["savefig.dpi"]=300
+mpl.rcParams["font.family"]="serif"
+
+data_dir_path=r"/home/spiralmonster/Projects/ReinforcementLearningForFinance/StockPicker"
+
 
 class Environment:
     def __init__(
@@ -18,29 +25,41 @@ class Environment:
         stock_symbol_list,
         num_stock_to_picked,
         execution_gap,
-        normalize_price_features=True
+        normalize_price_features=True,
+        data_retrieved=False
     ):
-
+        
         self.stock_symbol_list=stock_symbol_list
         self.num_stock_to_picked=num_stock_to_picked
         self.execution_gap=execution_gap
         self.normalize_price_features=normalize_price_features
+        self.data_retrieved=data_retrieved
+        self.data_path=os.path.join(data_dir_path,"data.csv")
 
         self.scaler=StandardScaler()
 
         self.ts=TimeSeries(key=os.environ["ALPHA_VANTAGE_KEY"],output_format="pandas",indexing_type="date")
 
         self.total_stock=len(self.stock_symbol_list)
-        self.num_action=math.comb(self.total_stock,self.num_stock_to_picked)
+       
 
-        self.action_space=Action_Space(self.num_action)
+        self.action_space=Action_Space(total_num_stock=self.total_stock,num_stock_to_picked=self.num_stock_to_picked)
 
         self.index=0
-        self.current_stocks=list(range(self.num_stock_to_picked))   ## Find its logic afterwards
+        self.training_episode=0
+        self.current_stocks=self.action_space.sample()
+        self.index_to_stock=dict(ind:sym for ind,sym in enumerate(self.stock_symbol_list))
+
+        if self.data_retrieved:
+            self.final_data=pd.read_csv(self.data_path)
+            self.steps=len(self.final_data)
+
+        else:
+            self.get_raw_data()
+            self.prepare_data()
+            self.final_data.to_csv(self.data_path)
         
-        self.get_raw_data()
-        self.prepare_data()
-        
+                                 
 
     def get_raw_data(self):
         data=[]
@@ -64,7 +83,7 @@ class Environment:
 
         self.raw_data=raw_data
 
-
+    
     def prepare_data(self):
         data=self.raw_data
         price_features=[]
@@ -105,11 +124,11 @@ class Environment:
                     f"{sym}_max_lag_{lag}" 
                 ])
 
+        
         data.dropna(inplace=True)
-
-        data=data.iloc[::self.execution_gap]
+        data=data.iloc[::self.execution_gap+1]
         self.steps=len(data)
-
+        
         if self.normalize_price_features:
             data[price_features]=self.scaler.fit_transform(data[price_features])
         
@@ -147,7 +166,12 @@ class Environment:
 
     def reset(self):
         self.index=0
-        self.current_stocks=list(range(self.num_stock_to_picked))
+        self.training_episode+=1
+        self.current_stocks=self.action_space.sample()
+
+        self.reward_per_step=[]
+        self.total_return_per_step=[]
+        
 
         state=self.get_state()
 

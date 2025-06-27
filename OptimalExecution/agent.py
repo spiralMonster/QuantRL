@@ -10,6 +10,11 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input,Dense,LSTM,Concatenate
 from tensorflow.keras.optimizers import Adam
 
+plt.style.use("seaborn-v0_8")
+mpl.rcParams["figure.dpi"]=300
+mpl.rcParams["savefig.dpi"]=300
+mpl.rcParams["font.family"]="serif"
+
 
 class Agent:
     def __init__(
@@ -27,7 +32,9 @@ class Agent:
         buffer_size,
         epsilon,
         epsilon_min,
-        epsilon_decay
+        epsilon_decay,
+        penalty_weights,
+        model_trained=False
     ):
         
         self.env=env
@@ -46,21 +53,24 @@ class Agent:
         self.epsilon=epsilon
         self.epsilon_min=epsilon_min
         self.epsilon_decay=epsilon_decay
+        self.penalty_weights=penalty_weights
 
         self.memory=deque(maxlen=self.buffer_size)
+        self.model_trained=model_trained
         self.model_dir=r"/home/spiralmonster/Projects/ReinforcementLearningForFinance/OptimalExecution/Models"
-
-        self.actor_model=self.create_model(
-            model_config=self.actor_model_config,
-            optimizer_config=self.actor_optimizer_config,
-            loss=self.actor_model_loss
-        )
         
-        self.critic_model=self.create_model(
-            model_config=self.critic_model_config,
-            optimizer_config=self.critic_optimizer_config,
-            loss=self.critic_model_loss
-        )
+        if not self.model_trained:
+            self.actor_model=self.create_model(
+                model_config=self.actor_model_config,
+                optimizer_config=self.actor_optimizer_config,
+                loss=self.actor_model_loss
+            )
+        
+            self.critic_model=self.create_model(
+                model_config=self.critic_model_config,
+                optimizer_config=self.critic_optimizer_config,
+                loss=self.critic_model_loss
+            )
         
 
     def create_model(self,model_config,optimizer_config,loss):
@@ -108,7 +118,8 @@ class Agent:
         optimizer=Adam(
             learning_rate=optimizer_config["learning_rate"],
             beta_1=optimizer_config["beta_1"],
-            beta_2=optimizer_config["beta_2"]
+            beta_2=optimizer_config["beta_2"],
+            clipnorm=optimizer_config["clipnorm"]
         )
         
         model.compile(
@@ -154,13 +165,16 @@ class Agent:
         send_report=False
         
         if action>self.env.remaining_share:
-            action_penalty=(action-self.env.remaining_share)**2
-            self.env.xt[self.env.index]=self.env.remaining_share
-            self.env.remaining_share=0.0
+            action_penalty=(action-self.env.remaining_share)
+            random_action=random.uniform(0.0,self.env.remaining_share)
+            self.env.xt[self.env.index]=random_action
+            self.env.xt_learned_strategy_per_step.append(random_action)
+            self.env.remaining_share-=random_action
             
         else:
             action_penalty=0.0
             self.env.xt[self.env.index]=action
+            self.env.xt_learned_strategy_per_step.append(action)
             self.env.remaining_share-=action
 
         self.env.permanent_impact=self.env.cal_permanent_impact()-self.env.permanent_impact
@@ -169,26 +183,23 @@ class Agent:
         self.env.total_execution_cost=self.env.permanent_impact+self.env.temporary_impact+self.env.execution_risk
 
         next_state=self.env.get_state()
-        pen=0.0
         
-        if self.env.index<self.env.trading_steps:
-            if self.env.remaining_share<0.0001:
-                done=True
-                send_report=True
-            else:
-                done=False
                 
-        elif self.env.index==self.env.trading_steps:
+        if self.env.index==self.env.trading_steps:
             done=True
             send_report=True
-            pen=self.env.remaining_share*10
+            
+        else:
+            done=False
+            
 
-        reward=-(pen+action_penalty+self.env.total_execution_cost)
+        remaining_share_penalty=self.penalty_weights["remaining_share_penalty_weight"]*self.env.remaining_share
+        total_exec_cost_penalty=self.penalty_weights["total_execution_cost_penalty_weight"]*self.env.total_execution_cost
+        action_penalty*=self.penalty_weights["action_penalty_weight"]
+        
+        reward=-(remaining_share_penalty+total_exec_cost_penalty+action_penalty)
 
         model_inp=self.prepare_model_input(state)
-        xt_learned=self.actor_model.predict(model_inp,verbose=False)[0][0]
-        self.env.xt_learned_strategy_per_step.append(xt_learned)
-
         pred_state_value=self.critic_model.predict(model_inp,verbose=False)[0][0]
         self.env.predicted_state_value.append(pred_state_value)
         next_state_model_inp=self.prepare_model_input(state)
@@ -319,17 +330,19 @@ class Agent:
             self.perm_impact_per_step_per_episode.append(self.env.permanent_impact_per_step)
             self.temp_impact_per_step_per_episode.append(self.env.temporary_impact_per_step)
             self.exec_risk_per_step_per_episode.append(self.env.execution_risk_per_step)
-            self.total_exec_cost_per_step_per_episode.append(self.env.total_execution_cost)
+            self.total_exec_cost_per_step_per_episode.append(self.env.total_execution_cost_per_step)
             self.learned_strategy_per_step_per_episode.append(self.env.xt_learned_strategy_per_step)
 
             
             if verbose:
-                if (ep%50)==0:
+                if (ep%100)==0:
                     info=f"Episode: {ep}/{episodes}| Epsilon: {self.epsilon}|"
                     for key,value in report.items():
                         info+=f" {key}: {value}|"
 
                     print(info)
+                    print(130*"*")
+                    print("\n")
                     
             if len(self.memory)>self.batch_size:
                 self.replay()
@@ -349,45 +362,49 @@ class Agent:
                 
                 
     def sample_episodes(self,num_plots):
-        return random.sample(range(self.exploration_episodes+1,self.env.training_episode))
+        return random.sample(range(self.exploration_episodes+1,self.env.training_episode),num_plots)
 
+        
 
     def training_plots(self,num_plots=5):
-        time_step=list(range(1,self.env.trading_steps))
-
+        time_step=list(range(1,self.env.trading_steps+1))
+        
         sample_ep=self.sample_episodes(num_plots)
         for ep in sample_ep:
             perm_imp=self.perm_impact_per_step_per_episode[ep]
+            temp_imp=self.temp_impact_per_step_per_episode[ep]
+            exec_risk=self.exec_risk_per_step_per_episode[ep]
+            
             data=pd.DataFrame(perm_imp,columns=["Permanent Impact"],index=time_step)
-            data["Temporary Impact"]=self.temp_impact_per_step_per_episode[ep]
-            data["Execution Risk"]=self.exec_risk_per_step_per_episode[ep]
-
+            data["Temporary Impact"]=temp_imp
+            data["Execution Risk"]=exec_risk
+        
             data.plot(figsize=(10,6),style=["b","g","r"])
             plt.xlabel("Trading Steps")
             plt.title(f"Training Episode: {ep}| Trading Steps VS Trading Impacts due to Trading Execution")
             plt.legend()
             plt.show()
             
-
+        
         sample_ep=self.sample_episodes(num_plots)
         for ep in sample_ep:
             total_exec_cost=self.total_exec_cost_per_step_per_episode[ep]
             data=pd.DataFrame(total_exec_cost,columns=["Total Execution Cost"],index=time_step)
-
+        
             data.plot(figsize=(10,6),style=["c"])
             plt.xlabel("Trading Steps")
             plt.title(f"Training Episode: {ep}| Trading Steps VS Total Execution Cost")
             plt.legend()
             plt.show()
             
-
+        
         sample_ep=self.sample_episodes(num_plots)
         optimal_strategy=self.env.xt_optimal[1:]
         for ep in sample_ep:
             data=pd.DataFrame(optimal_strategy,columns=["Optimal Strategy"],index=time_step)
             learned_strategy=self.learned_strategy_per_step_per_episode[ep]
             data["Learned Strategy"]=learned_strategy
-
+        
             data.plot(figsize=(10,6),style=["b","r"])
             plt.xlabel("Trading Steps")
             plt.ylabel("Shares Traded")
@@ -395,22 +412,27 @@ class Agent:
             plt.legend()
             plt.show()
             
-
+        
         sample_ep=self.sample_episodes(num_plots)
-        optimal_strategy=np.array(self.env.xt_optimal[1:]).cumsum()[::-1]
+        optimal_strategy=np.array(1-self.env.xt_optimal.cumsum())
+        ts=[0]
+        ts.extend(time_step)
         for ep in sample_ep:
-            data=pd.DataFrame(optimal_strategy,columns=["Optimal Strategy"],index=time_step)
-            learned_strategy=np.array(self.learned_strategy_per_step_per_episode[ep]).cumsum()[::-1]
+            data=pd.DataFrame(optimal_strategy,columns=["Optimal Strategy"],index=ts)
+            learned_strategy=[0]
+            learned_strategy.extend(self.learned_strategy_per_step_per_episode[ep])
+            learned_strategy=np.array(learned_strategy)
+            learned_strategy=1-learned_strategy.cumsum()
             data["Learned Strategy"]=learned_strategy
-
+        
             data.plot(figsize=(10,6),style=["g","c"])
             plt.xlabel("Trading Steps")
             plt.ylabel("Shares")
             plt.title(f"Training Episode: {ep}| Trading Strategies| Trading Steps Vs Share at Trading Step")
             plt.legend()
             plt.show()
-
-
+        
+        
         sample_ep=self.sample_episodes(num_plots)
         for ep in sample_ep:
             reward_data=self.reward_per_step_per_episode[ep]
@@ -419,7 +441,7 @@ class Agent:
             plt.ylabel("Reward")
             plt.title(f"Training Episode: {ep}| Trading Steps VS Reward received")
             plt.show()
-            
+                
 
     def episode_plots(self):
         episodes=list(range(1,self.env.training_episode+1))
@@ -482,7 +504,7 @@ class Agent:
             self.test_plots()
 
     def test_plots(self):
-        time_step=list(range(1,self.env.trading_steps))
+        time_step=list(range(1,self.env.trading_steps+1))
 
         perm_imp= self.env.permanent_impact_per_step
         data=pd.DataFrame(perm_imp,columns=["Permanent Impact"],index=time_step)

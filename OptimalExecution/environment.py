@@ -144,15 +144,14 @@ class Environment:
     
 
     def plot(self):
-        t=np.linspace(1,self.trading_time,self.trading_steps)
-
-        plt.plot(t,np.cumsum(self.xt_optimal[1:]).cumsum()[::-1],lw=1.0,c="r")
+        
+        plt.plot(list(range(0,self.trading_steps+1)),1-(np.array(self.xt_optimal).cumsum()),lw=1.0,c="r")
         plt.xlabel("Trading Step")
         plt.ylabel("Shares")
         plt.title("Share at Particular Step")
         plt.show()
         
-        plt.plot(t,self.xt_optimal[1:],lw=1.0,c="b")
+        plt.plot(list(range(1,self.trading_steps+1)),self.xt_optimal[1:],lw=1.0,c="b")
         plt.xlabel("Trading Step")
         plt.ylabel("Shares Traded")
         plt.ylim(0,1)
