@@ -83,6 +83,7 @@ class Environment:
 
         self.raw_data=raw_data
 
+
     
     def prepare_data(self):
         data=self.raw_data
@@ -134,7 +135,28 @@ class Environment:
         
         self.final_data=data
 
+    
+        
+    def cal_total_return_for_stocks(stocks):
+        total_return=0.0
+        data=self.env.final_data.iloc[self.env.index]
 
+        for sym in stocks:
+            data_sym=np.array(data[[f"{sym}_lag_{lag}" for lag in range(1,self.env.execution_gap)]])
+            ret=np.exp(data_sym.sum(axis=1))
+            total_return+=ret
+
+        total_return/=self.env.num_stock_to_picked
+        return total_return
+
+        
+    
+    def get_stock_from_index(self,index):
+        stock_symb=[self.env.index_to_stock[ind] for ind in index]
+        return stock_symb
+        
+
+        
     def get_state(self):
         data=self.final_data.iloc[self.index]
 
@@ -164,18 +186,32 @@ class Environment:
         return state
         
 
+        
     def reset(self):
         self.index=0
         self.training_episode+=1
         self.current_stocks=self.action_space.sample()
 
+        self.stock_per_step=[]
+        
         self.reward_per_step=[]
-        self.total_return_per_step=[]
+        self.return_per_step=[]
+        self.real_state_value_per_step=[]
+        self.pred_state_value_per_step=[]
+
+        self.set1_stocks=self.get_stock_from_index(self.action_space.sample())
+        self.set2_stocks=self.get_stock_from_index(self.action_space.sample())
+        self.set3_stocks=self.get_stock_from_index(self.action_space.sample())
+
+        self.set1_stocks_returns_per_step=[]
+        self.set2_stocks_returns_per_step=[]
+        self.set3_stocks_returns_per_step=[]
         
 
         state=self.get_state()
 
         return state,False
+
         
 
     def plots(self):
