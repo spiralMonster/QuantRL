@@ -5,10 +5,10 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.layers import Input,Dense,LSTM
-from tensorflow.keras.layers import Permute
+from tensorflow.keras.layers import Concatenate
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
-from sklearn import mean_squared_error
+from sklearn.metrics import mean_squared_error
 from collections import deque
 from pylab import plt,mpl
 from positional_embedding_layer import PositionalEmbeddingLayer
@@ -33,7 +33,7 @@ class Actor_Critic_Agent:
         critic_model_loss,
         batch_size,
         buffer_size,
-        exploration_episodes,
+        exploration_episode,
         gamma,
         epsilon,
         epsilon_min,
@@ -63,13 +63,13 @@ class Actor_Critic_Agent:
         
 
         if not self.model_trained:
-            self.actor_model=create_model(
+            self.actor_model=self.create_model(
                 model_config=self.actor_model_config,
                 optimizer_config=self.actor_optimizer_config,
                 model_loss=self.actor_model_loss
             )
     
-            self.critic_model=create_model(
+            self.critic_model=self.create_model(
                 model_config=self.critic_model_config,
                 optimizer_config=self.critic_optimizer_config,
                 model_loss=self.critic_model_loss
@@ -204,12 +204,12 @@ class Actor_Critic_Agent:
 
     
     def step(self,action):
-        state=self.get_state()
+        state=self.env.get_state()
         self.env.index+=1
         send_report=False
 
         new_stocks=self.env.get_stock_from_index(action)
-        old_stocks=self.env.get_stock_from_index(self.env.get_stocks)
+        old_stocks=self.env.get_stock_from_index(self.env.current_stocks)
 
         total_return_old=self.env.cal_total_return_for_stocks(old_stocks)
         total_return_new=self.env.cal_total_return_for_stocks(new_stocks)
@@ -259,9 +259,9 @@ class Actor_Critic_Agent:
 
             stock_picker_report={
                 "Total Returns By (Stock Picker)":np.exp(np.array(self.env.total_return_per_step).sum()),
-                f"Total Returns By ({"|".join(self.env.set1_stocks)})":np.exp(np.array(self.env.set1_stocks_returns_per_step).sum()),
-                f"Total Returns By ({"|".join(self.env.set2_stocks)})":np.exp(np.array(self.env.set2_stocks_returns_per_step).sum()),
-                f"Total Returns By ({"|".join(self.env.set3_stocks)})":np.exp(np.array(self.env.set3_stocks_returns_per_step).sum())
+                f"Total Returns By({'|'.join(self.env.set1_stocks)})":np.exp(np.array(self.env.set1_stocks_returns_per_step).sum()),
+                f"Total Returns By({'|'.join(self.env.set2_stocks)})":np.exp(np.array(self.env.set2_stocks_returns_per_step).sum()),
+                f"Total Returns By ({'|'.join(self.env.set3_stocks)})":np.exp(np.array(self.env.set3_stocks_returns_per_step).sum())
             }
 
         else:
@@ -339,10 +339,10 @@ class Actor_Critic_Agent:
             verbose=False
         )
 
-         self.actor_model.fit(
+        self.actor_model.fit(
             [data_X1,data_X2,data_X3,data_X4,data_X5,data_X6,data_X7,data_X8],
             actor_Y,
-            sample_weight=actor_sample_weight
+            sample_weight=actor_sample_weight,
             batch_size=batch_size,
             epochs=1,
             verbose=False
@@ -456,7 +456,7 @@ class Actor_Critic_Agent:
     def training_plots(self,num_plots=5):
         time_step=list(range(1,self.env.steps-1))
         
-        sampled_episodes=self.sample_indices(start=self.exploration_episode,self.env.training_episode,num_plots)
+        sampled_episodes=self.sample_indices(start=self.exploration_episode,end=self.env.training_episode,k=num_plots)
         for episode in sampled_episodes:
             picked_stocks=self.stock_per_step_per_episode[episode]
             picked_stocks=["|".join(stock) for stock in picked_stocks]
@@ -471,7 +471,7 @@ class Actor_Critic_Agent:
             print("\n")
             print(f"Training Episode: {episode}")
             
-            time_step_index=self.sample_indices(start=0,end=self.env.steps-1,3)
+            time_step_index=self.sample_indices(start=0,end=self.env.steps-1,k=3)
             for index in time_step_index:
                 data_index=data.iloc[index:index+5]
                 index=list(data_index.index)
@@ -499,7 +499,7 @@ class Actor_Critic_Agent:
 
 
         print("Return Comparison: Varying Stocks Selected by Agent vs. Holding the Same Stock Throughout")
-        sampled_episodes=self.sample_indices(start=self.exploration_episode,self.env.training_episode,num_plots)
+        sampled_episodes=self.sample_indices(start=self.exploration_episode,end=self.env.training_episode,k=num_plots)
         for episode in sampled_episodes:
             set1_stock=self.set1_stock[episode]
             set2_stock=self.set2_stock[episode]
@@ -531,7 +531,7 @@ class Actor_Critic_Agent:
         print("\n")
 
         print("Rewards during Agent Execution")
-        sampled_episodes=self.sample_indices(start=self.exploration_episode,self.env.training_episode,num_plots)
+        sampled_episodes=self.sample_indices(start=self.exploration_episode,end=self.env.training_episode,k=num_plots)
         for episode in sampled_episodes:
             reward_data=self.reward_per_step_per_episode[episode]
             data=pd.DataFrame(reward_data,columns=["Reward"],index=time_step)
@@ -629,7 +629,7 @@ class Actor_Critic_Agent:
         print(130*"*")
         print("\n")
         
-        sampled_indices=self.sample_indices(0,self.env.steps-1,5)
+        sampled_indices=self.sample_indices(start=0,end=self.env.steps-1,k=5)
         for ind in sampled_indices:
             data_ind=data.iloc[ind:ind+5]
             

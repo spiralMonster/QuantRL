@@ -1,0 +1,6 @@
+optimizer_config={
+    "learning_rate":,
+    "beta_1":,
+    "beta_2":,
+    "clipnorm":
+}

@@ -48,7 +48,7 @@ class Environment:
         self.index=0
         self.training_episode=0
         self.current_stocks=self.action_space.sample()
-        self.index_to_stock=dict(ind:sym for ind,sym in enumerate(self.stock_symbol_list))
+        self.index_to_stock={ind:sym for ind,sym in enumerate(self.stock_symbol_list)}
 
         if self.data_retrieved:
             self.final_data=pd.read_csv(self.data_path)
@@ -70,13 +70,16 @@ class Environment:
             data_symbol.rename(columns={"4. close":symbol},inplace=True)
             data.append(data_symbol)
 
-        data_lengths=[len(d) for d in data]
-        min_len=min(data_lengths)
+        initial_timestamp=list(data[0].index)[0]
+        for data_sym in data[1:]:
+            timestamp=list(data_sym.index)[0]
+            if timestamp<initial_timestamp:
+                initial_timestamp=timestamp
 
         raw_data=[]
         for data_sym in data:
-            data_sym=data_sym.iloc[:min_len]
-            raw_data.append(data_sym)
+            d=data_sym[data_sym.index>=initial_timestamp]
+            raw_data.append(d)
 
         raw_data=pd.concat(raw_data,axis=1)
         raw_data.dropna(inplace=True)
@@ -121,7 +124,7 @@ class Environment:
                 price_features.extend([
                     f"{sym}_lag_{lag}",
                     f"{sym}_SMA_lag_{lag}",
-                    f"{sym}_min_lag_{lag}"
+                    f"{sym}_min_lag_{lag}",
                     f"{sym}_max_lag_{lag}" 
                 ])
 
@@ -137,22 +140,22 @@ class Environment:
 
     
         
-    def cal_total_return_for_stocks(stocks):
+    def cal_total_return_for_stocks(self,stocks):
         total_return=0.0
-        data=self.env.final_data.iloc[self.env.index]
+        data=self.final_data.iloc[self.index]
 
         for sym in stocks:
-            data_sym=np.array(data[[f"{sym}_lag_{lag}" for lag in range(1,self.env.execution_gap)]])
-            ret=np.exp(data_sym.sum(axis=1))
+            data_sym=np.array(data[[f"{sym}_lag_{lag}" for lag in range(1,self.execution_gap)]])
+            ret=np.exp(data_sym.sum())
             total_return+=ret
 
-        total_return/=self.env.num_stock_to_picked
+        total_return/=self.num_stock_to_picked
         return total_return
 
         
     
     def get_stock_from_index(self,index):
-        stock_symb=[self.env.index_to_stock[ind] for ind in index]
+        stock_symb=[self.index_to_stock[ind] for ind in index]
         return stock_symb
         
 
@@ -161,7 +164,7 @@ class Environment:
         data=self.final_data.iloc[self.index]
 
         returns_data=[[data[f"{sym}_returns_lag_{lag}"] for sym in self.stock_symbol_list] for lag in list(range(self.execution_gap,0,-1))]
-        price_data=[[data[f"{sym}_lag_{lag}"] for sym in self.stock_symbol_list] for lag in range(list(self.execution_gap,0,-1))]
+        price_data=[[data[f"{sym}_lag_{lag}"] for sym in self.stock_symbol_list] for lag in list(range(self.execution_gap,0,-1))]
         momentum_data=[[data[f"{sym}_mom_lag_{lag}"] for sym in self.stock_symbol_list] for lag in list(range(self.execution_gap,0,-1))]
         vol_data=[[data[f"{sym}_vol_lag_{lag}"] for sym in self.stock_symbol_list] for lag in list(range(self.execution_gap,0,-1))]
         sma_data=[[data[f"{sym}_SMA_lag_{lag}"] for sym in self.stock_symbol_list] for lag in list(range(self.execution_gap,0,-1))]
@@ -215,6 +218,9 @@ class Environment:
         
 
     def plots(self):
+        data=self.final_data
+        data.index=data["date"]
+        
         data[[f"{sym}_returns" for sym in self.stock_symbol_list]].plot(
             figsize=(10,6),
             style=['b','g','c','r','m','y','k']

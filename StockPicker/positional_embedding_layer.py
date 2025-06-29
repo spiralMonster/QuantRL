@@ -22,14 +22,14 @@ class PositionalEmbeddingLayer(Layer):
 
 
     def positional_matrix_generation(self):
-        matrix=np.zeros(shape=(self.seqlen,self.emdedding_dim))
+        matrix=np.zeros(shape=(self.seqlen,self.embedding_dim))
         n=1000
 
         for pos in range(self.seqlen):
             for i in range(int(self.embedding_dim/2)):
                 denom=np.power(n,(2*i/self.embedding_dim))
-                matrix[pos,2*i]=np.sin(k/denom)
-                matrix[pos,2*i+1]=np.cos(k/denom)
+                matrix[pos,2*i]=np.sin(pos/denom)
+                matrix[pos,2*i+1]=np.cos(pos/denom)
 
         self.positional_matrix=matrix
 
