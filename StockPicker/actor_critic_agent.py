@@ -185,7 +185,7 @@ class Actor_Critic_Agent:
         action_pred=self.actor_model.predict(model_inp,verbose=False)[0]
         action_pred=np.array(action_pred)
 
-        action=np.argpartition(action_pred,self.env.total_stock)
+        action=np.argpartition(action_pred,self.env.total_stock-1)
         action=list(action)[-self.env.num_stock_to_picked:]
 
         return action
@@ -214,6 +214,7 @@ class Actor_Critic_Agent:
         total_return_old=self.env.cal_total_return_for_stocks(old_stocks)
         total_return_new=self.env.cal_total_return_for_stocks(new_stocks)
 
+
         reward=total_return_old-total_return_new
         self.env.current_stocks=action
 
@@ -222,11 +223,17 @@ class Actor_Critic_Agent:
         self.env.stock_per_step.append(self.env.get_stock_from_index(action))
         
         self.env.reward_per_step.append(reward)
-        self.env.return_per_step.append(total_return_new)
+        self.env.total_return_per_step.append(total_return_new)
 
-        self.env.set1_stocks_returns_per_step.append(self.env.cal_total_return_for_stocks(self.env.set1_stocks))
-        self.env.set2_stocks_returns_per_step.append(self.env.cal_total_return_for_stocks(self.env.set2_stocks))
-        self.env.set3_stocks_returns_per_step.append(self.env.cal_total_return_for_stocks(self.env.set3_stocks))
+        self.env.set1_stocks_total_returns_per_step.append(self.env.cal_total_return_for_stocks(self.env.set1_stocks))
+        self.env.set2_stocks_total_returns_per_step.append(self.env.cal_total_return_for_stocks(self.env.set2_stocks))
+        self.env.set3_stocks_total_returns_per_step.append(self.env.cal_total_return_for_stocks(self.env.set3_stocks))
+
+        self.env.returns.extend(self.env.get_returns_per_step(new_stocks))
+        self.env.set1_stocks_returns.extend(self.env.get_returns_per_step(self.env.set1_stocks))
+        self.env.set2_stocks_returns.extend(self.env.get_returns_per_step(self.env.set2_stocks))
+        self.env.set3_stocks_returns.extend(self.env.get_returns_per_step(self.env.set3_stocks))
+        
 
         model_inp_state=self.prepare_model_input(state)
         pred_state_value=self.critic_model.predict(model_inp_state,verbose=False)[0][0]
@@ -248,8 +255,6 @@ class Actor_Critic_Agent:
             report={
                 "Total Reward":sum(self.env.reward_per_step),
                 "Average Reward Per Step":sum(self.env.reward_per_step)/self.env.steps,
-                "Total Return":np.exp(np.array(self.env.total_return_per_step).sum()),
-                "Average Return Per Step":sum(self.env.total_return_per_step)/self.steps,
                 "Mean Squared Error between Real and Predicted State Value":mean_squared_error(
                     self.env.real_state_value_per_step,
                     self.env.pred_state_value_per_step
@@ -257,11 +262,16 @@ class Actor_Critic_Agent:
     
             }
 
+            total_returns=np.exp(np.array(self.env.returns).sum())
+            set1_total_returns=np.exp(np.array(self.env.set1_stocks_returns).sum())
+            set2_total_returns=np.exp(np.array(self.env.set2_stocks_returns).sum())
+            set3_total_returns=np.exp(np.array(self.env.set3_stocks_returns).sum())
+            
             stock_picker_report={
-                "Total Returns By (Stock Picker)":np.exp(np.array(self.env.total_return_per_step).sum()),
-                f"Total Returns By({'|'.join(self.env.set1_stocks)})":np.exp(np.array(self.env.set1_stocks_returns_per_step).sum()),
-                f"Total Returns By({'|'.join(self.env.set2_stocks)})":np.exp(np.array(self.env.set2_stocks_returns_per_step).sum()),
-                f"Total Returns By ({'|'.join(self.env.set3_stocks)})":np.exp(np.array(self.env.set3_stocks_returns_per_step).sum())
+                "Total Returns By (Stock Picker)":total_returns,
+                f"Total Returns By({'|'.join(self.env.set1_stocks)})":set1_total_returns,
+                f"Total Returns By({'|'.join(self.env.set2_stocks)})":set2_total_returns,
+                f"Total Returns By ({'|'.join(self.env.set3_stocks)})":set3_total_returns
             }
 
         else:
@@ -358,20 +368,25 @@ class Actor_Critic_Agent:
         
         self.treward=[]
         self.avg_reward_per_episode=[]
-        self.avg_total_return_per_episode=[]
-        self.total_return_per_episode=[]
         self.mse_state_value=[]
 
         self.reward_per_step_per_episode=[]
-        self.return_per_step_per_episode=[]
+        self.total_return_per_step_per_episode=[]
 
         self.set1_stock=[]
         self.set2_stock=[]
         self.set3_stock=[]
 
-        self.set1_return_per_step_per_episode=[]
-        self.set2_return_per_step_per_episode=[]
-        self.set3_return_per_step_per_episode=[]
+        self.set1_total_return_per_step_per_episode=[]
+        self.set2_total_return_per_step_per_episode=[]
+        self.set3_total_return_per_step_per_episode=[]
+
+        self.returns_per_episode=[]
+        self.set1_returns_per_episode=[]
+        self.set2_returns_per_episode=[]
+        self.set3_returns_per_episode=[]
+
+        self.total_return_per_episode=[]
 
 
         for ep in range(1,episodes+1):
@@ -394,21 +409,27 @@ class Actor_Critic_Agent:
             
             self.treward.append(report["Total Reward"])
             self.avg_reward_per_episode.append(report["Average Reward Per Step"])
-            self.avg_total_return_per_episode.append(report["Average Return Per Step"])
-            self.total_return_per_episode.append(report["Total Return"])
             self.mse_state_value.append(report["Mean Squared Error between Real and Predicted State Value"])
 
+            self.total_return_per_episode.append(stock_picker_report["Total Returns By (Stock Picker)"])
+
             self.reward_per_step_per_episode.append(self.env.reward_per_step)
-            self.return_per_step_per_episode.append(self.env.return_per_step)
+            
 
             self.set1_stock.append(self.env.set1_stocks)
             self.set2_stock.append(self.env.set2_stocks)
             self.set3_stock.append(self.env.set1_stocks)
             
 
-            self.set1_return_per_step_per_episode.append(self.env.set1_stocks_returns_per_step)
-            self.set2_return_per_step_per_episode.append(self.env.set2_stocks_returns_per_step)
-            self.set3_return_per_step_per_episode.append(self.env.set3_stocks_returns_per_step)
+            self.total_return_per_step_per_episode.append(self.env.total_return_per_step)
+            self.set1_total_return_per_step_per_episode.append(self.env.set1_stocks_total_returns_per_step)
+            self.set2_total_return_per_step_per_episode.append(self.env.set2_stocks_total_returns_per_step)
+            self.set3_total_return_per_step_per_episode.append(self.env.set3_stocks_total_returns_per_step)
+
+            self.returns_per_episode.append(self.env.returns)
+            self.set1_returns_per_episode.append(self.env.set1_stocks_returns)
+            self.set2_returns_per_episode.append(self.env.set2_stocks_returns)
+            self.set3_returns_per_episode.append(self.env.set3_stocks_returns)
             
                 
             if verbose:
@@ -416,11 +437,13 @@ class Actor_Critic_Agent:
                     info=f"Episode: {ep}/{episodes}"
                     info+="\n"
                     info+=f"Epsilon: {self.epsilon}"
+                    info+="\n"
                     for key,value in report.items():
                         info+=f"{key}: {value}"
                         info+="\n"
 
                     info+="***"
+                    info+="\n"
                     info+="Return Comparison: Varying Stocks Selected by StockPicker vs. Holding the Same Stock Throughout"
                     info+="\n"
                     for key,value in stock_picker_report.items():
@@ -455,27 +478,110 @@ class Actor_Critic_Agent:
     
     def training_plots(self,num_plots=5):
         time_step=list(range(1,self.env.steps-1))
-        
+
+        print("Returns of Stock and Stock Picked By Agent Between Time Step")
+        print(121*"*")
         sampled_episodes=self.sample_indices(start=self.exploration_episode,end=self.env.training_episode,k=num_plots)
         for episode in sampled_episodes:
+            print(f"Training Episode: {episode}")
+            picked_stock=self.stock_per_step_per_episode[episode]
+            
+            picked_stocks=["|".join(stock) for stock in picked_stock]
+            returns_data=self.returns_per_episode[episode]
+            index=list(range(1,len(x)+1))
+
+            data=pd.DataFrame(returns_data,columns=["Returns"])
+            data["Index"]=index
+            data["Stocks"]=picked_stocks
+            
+            indexes=self.sample_indices(start=0,end=len(x),k=5)
+            for ind in indexes:
+                if len(x)-ind>5:
+                    data_ind=data.iloc[ind:ind+5]
+                else:
+                    data_ind=data.iloc[ind:]
+
+                x=list(data_ind["Index"])
+                y=list(data_ind["Returns"])
+                labels=list(data_ind["Stocks"])
+
+                plt.scatter(x,y,color="black")
+                for i in range(5):
+                    plt.annotate(
+                        labels[i],
+                        (x[i],y[i]),
+                        textcoords="offset points",
+                        xytext=(5,5),
+                        ha="center",
+                        color="black"
+                    )
+
+                plt.plot(x,y,lw=1.0,c="b")
+                plt.xlabel("Time Steps")
+                plt.ylabel("Returns")
+                plt.title(f"Time Steps: {ind}-{ind+5}| Stock Picked By Agent| Time Steps VS Returns")
+                plt.show()
+                
+        print(121*"*")
+        print("\n")
+            
+        
+        print("Returns of Stock Picked By Agent And Different Set of Stocks")
+        print(121*"*")
+        sampled_episodes=self.sample_indices(start=self.exploration_episode,end=self.env.training_episode,k=num_plots)
+        for episode in sampled_episodes:
+            set1_stock=self.set1_stock[episode]
+            set2_stock=self.set2_stock[episode]
+            set3_stock=self.set3_stock[episode]
+
+            set1_stock="|".join(set1_stock)
+            set2_stock="|".join(set2_stock)
+            set3_stock="|".join(set3_stock)
+
+            return_data=self.returns_per_episode[episode]
+            set1_returns=self.set1_returns_per_episode[episode]
+            set2_returns=self.set2_returns_per_episode[episode]
+            set3_returns=self.set3_returns_per_episode[episode]
+
+            index=list(range(1,len(return_data)+1))
+            data=pd.DataFrame(return_data,columns=["Returns of stock picked by Agent"],index=index)
+            data[f"Returns of {set_1}"]=set1_returns
+            data[f"Returns of {set_2}"]=set2_returns
+            data[f"Returns of {set_3}"]=set3_returns
+
+            data.plot(figsize=(10,6),style=["r","b","g","c"])
+            plt.xlabel("Time Steps")
+            plt.ylabel("Returns")
+            plt.title(f"Training Episode: {episode}| Time Steps VS Returns")
+            plt.show()
+
+            
+        print(121*"*")    
+        print("\n")
+        
+        print("Total Returns of Stock and Stock Picked By Agent Between Execution Step")
+        print(121*"*")
+        sampled_episodes=self.sample_indices(start=self.exploration_episode,end=self.env.training_episode,k=num_plots)
+        for episode in sampled_episodes:
+            print(f"Training Episode: {episode}")
             picked_stocks=self.stock_per_step_per_episode[episode]
             picked_stocks=["|".join(stock) for stock in picked_stocks]
 
-            data_return=self.return_per_step_per_episode[episode]
-            data=pd.DataFrame(data_return,columns=["Stock Returns"])
+            data_return=self.total_return_per_step_per_episode[episode]
+            data=pd.DataFrame(data_return,columns=["Stock Total Returns"])
             data["Stocks"]=picked_stocks
             data.index=time_step
-
-            print("Stock Returns and Stock Picked By Agent at a Time Step")
-            print(130*"*")
-            print("\n")
-            print(f"Training Episode: {episode}")
+            
             
             time_step_index=self.sample_indices(start=0,end=self.env.steps-1,k=3)
             for index in time_step_index:
-                data_index=data.iloc[index:index+5]
+                if len(data)-index>5:
+                    data_index=data.iloc[index:index+5]
+                else:
+                    data_index=data.iloc[index:]
+                    
                 index=list(data_index.index)
-                returns=list(data_index["Stock Returns"])
+                returns=list(data_index["Stock Total Returns"])
                 labels=list(data_index["Stocks"])
 
                 plt.scatter(index,returns,color="black")
@@ -487,18 +593,20 @@ class Actor_Critic_Agent:
                                  ha='center',
                                  color="black")
 
-                plt.plot(index,returns,lw=1.0,c="b")
-                plt.xlabel("Step")
-                plt.ylabel("Stock Returns")
-                plt.title(f"Time Step: {index}-{index+5}| Stock Picked By Agent| Stock Returns")
+                plt.plot(index,returns,lw=1.0,c="b",label=f"1 Execution Step = {self.env.execution_gap} Time Steps")
+                plt.xlabel("Execution Step")
+                plt.ylabel("Stock Total Returns")
+                plt.title(f"Execution Step: {index}-{index+5}| Stock Picked By Agent| Stock Returns")
                 plt.legend()
                 plt.show()
 
-            print(130*"*")
-            print("\n")
+        
+        print(121*"*")    
+        print("\n")
 
 
-        print("Return Comparison: Varying Stocks Selected by Agent vs. Holding the Same Stock Throughout")
+        print("Total Return (Between Execution Steps) Comparison: Varying Stocks Selected by Agent vs. Holding the Same Stock Throughout")
+        print(121*"*")   
         sampled_episodes=self.sample_indices(start=self.exploration_episode,end=self.env.training_episode,k=num_plots)
         for episode in sampled_episodes:
             set1_stock=self.set1_stock[episode]
@@ -509,28 +617,29 @@ class Actor_Critic_Agent:
             set2_stock="|".join(set2_stock)
             set3_stock="|".join(set3_stock)
 
-            set1_stock_return=self.set1_return_per_step_per_episode[episode]
-            set2_stock_return=self.set2_return_per_step_per_episode[episode]
-            set3_stock_return=self.set3_return_per_step_per_episode[episode]
+            set1_stock_return=self.set1_total_return_per_step_per_episode[episode]
+            set2_stock_return=self.set2_total_return_per_step_per_episode[episode]
+            set3_stock_return=self.set3_total_return_per_step_per_episode[episode]
 
-            stock_return=self.return_per_step_per_episode[episode]
+            stock_return=self.total_return_per_step_per_episode[episode]
 
-            data=pd.DataFrame(stock_return,columns=["Stock Returns of stock picked by Agent"],index=time_step)
-            data[f"Stock Returns of {set1_stock}"]=set1_stock_return
-            data[f"Stock Returns of {set2_stock}"]=set2_stock_return
-            data[f"Stock Returns of {set3_stock}"]=set3_stock_return
+            data=pd.DataFrame(stock_return,columns=["Total Stock Returns of stock picked by Agent"],index=time_step)
+            data[f"Total Stock Returns of {set1_stock}"]=set1_stock_return
+            data[f"Total Stock Returns of {set2_stock}"]=set2_stock_return
+            data[f"Total Stock Returns of {set3_stock}"]=set3_stock_return
 
             data.plot(figsize=(10,6),style=["r","b","g","c"])
-            plt.xlabel("Time Steps")
-            plt.ylabel("Stock Returns")
-            plt.title(f"Training Episode: {episode}")
+            plt.xlabel("Execution Steps")
+            plt.ylabel("Total Stock Returns")
+            plt.title(f"Training Episode: {episode}| 1 Execution Step= {self.env.execution_gap} Time Steps")
             plt.legend()
             plt.show()
 
-        print(130*"*")
+        print(121*"*")
         print("\n")
 
         print("Rewards during Agent Execution")
+        print(121*"*")   
         sampled_episodes=self.sample_indices(start=self.exploration_episode,end=self.env.training_episode,k=num_plots)
         for episode in sampled_episodes:
             reward_data=self.reward_per_step_per_episode[episode]
@@ -542,7 +651,7 @@ class Actor_Critic_Agent:
             plt.title(f"Training Episode: {episode}| Time Step VS Reward")
             plt.show()
 
-        print(130*"*")
+        print(121*"*")
         print("\n")
 
 
@@ -552,14 +661,14 @@ class Actor_Critic_Agent:
         data=self.total_return_per_episode
         plt.plot(episodes,data,lw=1.0,c="b")
         plt.xlabel("Episodes")
-        plt.ylabel("Returns")
-        plt.title("Episodes VS Returns of stocks picked By Agent")
+        plt.ylabel("Total Returns")
+        plt.title("Episodes VS Total Returns of stocks picked By Agent")
         plt.show()
 
         data=self.avg_total_return_per_episode
         plt.plot(episodes,data,lw=1.0,c="g")
         plt.xlabel("Episodes")
-        plt.ylabel("Returns")
+        plt.ylabel("Total Returns")
         plt.title("Episodes VS Average Returns Per Episode of stock picked By Agent")
         plt.show()
 
@@ -616,83 +725,149 @@ class Actor_Critic_Agent:
 
     def test_plots(self):
         time_step=list(range(1,self.env.steps-1))
-
-        picked_stocks=self.env.stock_per_step
-        picked_stocks=["|".join(stock) for stock in picked_stocks]
-
-        returns_data=self.env.return_per_step
-        data=pd.DataFrame(returns_data,columns=["Returns"])
-        data["Stocks"]=picked_stocks
-        data["Steps"]=time_step
-
-        print("(Testing) Stock Returns and Stock Picked By Agent at a Time Step")
-        print(130*"*")
-        print("\n")
         
-        sampled_indices=self.sample_indices(start=0,end=self.env.steps-1,k=5)
-        for ind in sampled_indices:
-            data_ind=data.iloc[ind:ind+5]
-            
-            x=list(data_ind["Steps"])
+        print("(Testing) Returns of Stock and Stock Picked By Agent Between Time Step")
+        print(121*"*")
+        picked_stock=self.env.stock_per_step
+        picked_stocks=["|".join(stock) for stock in picked_stock]
+        returns_data=self.env.returns
+        index=list(range(1,len(x)+1))
+        data=pd.DataFrame(returns_data,columns=["Returns"])
+        data["Index"]=index
+        data["Stocks"]=picked_stocks
+        indexes=self.sample_indices(start=0,end=len(x),k=5)
+        for ind in indexes:
+            if len(x)-ind>5:
+                data_ind=data.iloc[ind:ind+5]
+            else:
+                data_ind=data.iloc[ind:]
+        
+            x=list(data_ind["Index"])
             y=list(data_ind["Returns"])
             labels=list(data_ind["Stocks"])
-
             plt.scatter(x,y,color="black")
-
             for i in range(5):
-                plt.annotate(labels[i],
-                             (x[i],y[i]),
-                             textcoords="offset points",
-                             xytext=(5,5),
-                             ha="center",
-                             color="black")
-
-            plt.plot(x,y,lw=1.0,c="b")
-            plt.xlabel("Step")
-            plt.ylabel("Stock Returns")
-            plt.title(f"Time Step: {ind}-{ind+5}| Stock Picked By Agent| Stock Returns")
-            plt.legend()
-            plt.show()
-            
+                plt.annotate(
+                    labels[i],
+                    (x[i],y[i]),
+                    textcoords="offset points",
+                    xytext=(5,5),
+                    ha="center",
+                    color="black"
+                )
         
-        print(130*"*")
+            plt.plot(x,y,lw=1.0,c="b")
+            plt.xlabel("Time Steps")
+            plt.ylabel("Returns")
+            plt.title(f"Time Steps: {ind}-{ind+5}| Stock Picked By Agent| Time Steps VS Returns")
+            plt.show()
+        print(121*"*")
         print("\n")
+        
 
-        print("Return Comparison (Testing): Varying Stocks Selected by Agent vs. Holding the Same Stock Throughout")
-        returns_data=self.env.returns_per_step
-
+        
+        print("(Testing) Returns of Stock Picked By Agent And Different Set of Stocks")
+        print(121*"*")
         set1_stock=self.env.set1_stocks
         set2_stock=self.env.set2_stocks
         set3_stock=self.env.set3_stocks
-
         set1_stock="|".join(set1_stock)
         set2_stock="|".join(set2_stock)
         set3_stock="|".join(set3_stock)
-
-        set1_stock_return=self.env.set1_stocks_returns_per_step
-        set2_stock_return=self.env.set2_stocks_returns_per_step
-        set3_stock_return=self.env.set3_stocks_returns_per_step
-
-        stock_return=self.env.return_per_step
-
-        data=pd.DataFrame(stock_return,columns=["Stock Returns of stock picked by Agent"],index=time_step)
-        data[f"Stock Returns of {set1_stock}"]=set1_stock_return
-        data[f"Stock Returns of {set2_stock}"]=set2_stock_return
-        data[f"Stock Returns of {set3_stock}"]=set3_stock_return
-
+        return_data=self.env.returns
+        set1_returns=self.env.set1_stocks_returns
+        set2_returns=self.env.set2_stocks_returns
+        set3_returns=self.env.set3_stocks_returns
+        index=list(range(1,len(return_data)+1))
+        data=pd.DataFrame(return_data,columns=["Returns of stock picked by Agent"],index=index)
+        data[f"Returns of {set_1}"]=set1_returns
+        data[f"Returns of {set_2}"]=set2_returns
+        data[f"Returns of {set_3}"]=set3_returns
         data.plot(figsize=(10,6),style=["r","b","g","c"])
         plt.xlabel("Time Steps")
-        plt.ylabel("Stock Returns")
-        plt.legend()
-        plt.show()
-
-        print(130*"*")
+        plt.ylabel("Returns")
+        plt.title(f"Training Episode: {episode}| Time Steps VS Returns")
+        plt.show() 
+        print(121*"*")    
         print("\n")
 
-        plt.plot(time_step,self.env.reward_per_step,lw=1.0,c="g")
-        plt.xlabel("Time Step")
-        plt.ylabel("Reward")
-        plt.title("Time Step VS Reward Per Step received by Agent")
-        plt.show()
 
         
+        print("(Testing) Total Returns of Stock and Stock Picked By Agent Between Execution Step")
+        print(121*"*")
+        picked_stocks=self.env.stock_per_step
+        picked_stocks=["|".join(stock) for stock in picked_stocks]
+        data_return=self.env.total_return_per_step
+        data=pd.DataFrame(data_return,columns=["Stock Total Returns"])
+        data["Stocks"]=picked_stocks
+        data.index=time_step
+        time_step_index=self.sample_indices(start=0,end=self.env.steps-1,k=3)
+        for index in time_step_index:
+            if len(data)-index>5:
+                data_index=data.iloc[index:index+5]
+            else:
+                data_index=data.iloc[index:]
+                
+            index=list(data_index.index)
+            returns=list(data_index["Stock Total Returns"])
+            labels=list(data_index["Stocks"])
+            plt.scatter(index,returns,color="black")
+            for i in range(5):
+                plt.annotate(labels[i],
+                             (index[i],returns[i]),
+                             textcoords="offset points",
+                             xytext=(5,5), 
+                             ha='center',
+                             color="black")
+
+            plt.plot(index,returns,lw=1.0,c="b",label=f"1 Execution Step = {self.env.execution_gap} Time Steps")
+            plt.xlabel("Execution Step")
+            plt.ylabel("Stock Total Returns")
+            plt.title(f"Execution Step: {index}-{index+5}| Stock Picked By Agent| Stock Returns")
+            plt.legend()
+            plt.show()
+        print(121*"*")    
+        print("\n")
+        
+
+        
+        print("(Testing) Total Return (Between Execution Steps) Comparison: Varying Stocks Selected by Agent vs. Holding the Same Stock Throughout")
+        print(121*"*")   
+        set1_stock=self.env.set1_stocks
+        set2_stock=self.env.set2_stocks
+        set3_stock=self.env.set3_stocks
+        set1_stock="|".join(set1_stock)
+        set2_stock="|".join(set2_stock)
+        set3_stock="|".join(set3_stock)
+        set1_stock_return=self.env.set1_stocks_total_returns_per_step
+        set2_stock_return=self.env.set2_stocks_total_returns_per_step
+        set3_stock_return=self.env.set3_stocks_total_returns_per_step
+        stock_return=self.env.total_return_per_step
+        data=pd.DataFrame(stock_return,columns=["Total Stock Returns of stock picked by Agent"],index=time_step)
+        data[f"Total Stock Returns of {set1_stock}"]=set1_stock_return
+        data[f"Total Stock Returns of {set2_stock}"]=set2_stock_return
+        data[f"Total Stock Returns of {set3_stock}"]=set3_stock_return
+        data.plot(figsize=(10,6),style=["r","b","g","c"])
+        plt.xlabel("Execution Steps")
+        plt.ylabel("Total Stock Returns")
+        plt.title(f"1 Execution Step= {self.env.execution_gap} Time Steps")
+        plt.legend()
+        plt.show()
+        print(121*"*")
+        print("\n")
+        
+
+        
+        print("(Testing) Rewards during Agent Execution")
+        print(121*"*")   
+        reward_data=self.env.reward_per_step
+        data=pd.DataFrame(reward_data,columns=["Reward"],index=time_step)
+        data.plot(figsize=(10,6),style=["g"])
+        plt.xlabel("Time Step")
+        plt.ylabel("Reward")
+        plt.title(f"Training Episode: {episode}| Time Step VS Reward")
+        plt.show()
+        print(121*"*")
+        print("\n")
+
+

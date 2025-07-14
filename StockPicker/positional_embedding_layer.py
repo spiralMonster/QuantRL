@@ -12,7 +12,7 @@ class PositionalEmbeddingLayer(Layer):
 
         self.positional_matrix_generation()
 
-        self.positional_embedding=self.add_variable(
+        self.positional_embedding=self.add_weight(
             shape=(self.seqlen,self.embedding_dim),
             dtype=tf.float32,
             trainable=True,
@@ -35,16 +35,15 @@ class PositionalEmbeddingLayer(Layer):
 
 
     def call(self,x):
-        batch_size=x.shape[0]
-        embedding=tf.broadcast_to(self.positional_embedding,(batch_size,self.seqlen,self.embedding_dim))
+        embedding=tf.expand_dims(self.positional_embedding,axis=0)
         embedding=tf.transpose(embedding,perm=[0,2,1])
-
+        
         out=tf.math.add(x,embedding)
         return out
         
 
     def get_config(self):
-        config=super().config()
+        config=super().get_config()
         config.update({
             "seqlen":self.seqlen,
             "embedding_dim":self.embedding_dim
